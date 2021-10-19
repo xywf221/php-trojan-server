@@ -1,0 +1,25 @@
+{
+  "name": "dmls/trojan-server",
+  "type": "project",
+  "license": "MIT",
+  "authors": [
+    {
+      "name": "贺大奎",
+      "email": "993651481@qq.com"
+    }
+  ],
+  "require": {
+    "symfony/console": "^5.3",
+    "symfony/yaml": "^5.3",
+    "ext-swoole": "*",
+    "ext-json": "*"
+  },
+  "autoload": {
+    "psr-4": {
+      "Trojan\\Server\\": ""
+    }
+  },
+  "require-dev": {
+    "eaglewu/swoole-ide-helper": "dev-master"
+  }
+}
