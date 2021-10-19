@@ -32,26 +32,26 @@ class RunCommand extends Command
 
         switch (strtoupper($format)) {
             case 'YAML':
-                $data = yaml_parse_file($file);
+                $config = yaml_parse_file($file);
                 break;
             case 'JSON':
-                $data = json_decode(file_get_contents($file), true);
+                $config = json_decode(file_get_contents($file), true);
                 break;
             default:
                 throw new RuntimeException("unsupported file format:$format");
         }
         //拿到数据初始化Server
         $server = new TLSCustomServer();
-        $server->setBindAddress('127.0.0.1');
-        $server->setBindPort(4433);
+        $server->setBindAddress($config['bind_address']);
+        $server->setBindPort($config['bind_port']);
 
-        $server->setRemoteAddress('127.0.0.1');
-        $server->setRemotePort(8000);
+        $server->setRemoteAddress($config['remote_address']);
+        $server->setRemotePort($config['remote_port']);
 
 
-        $server->setSni('neo-term-repo.proce.top');
-        $server->setCert('/Users/dmls/Desktop/trojan-server/testdata/neo-term-repo.proce.top.crt');
-        $server->setPk('/Users/dmls/Desktop/trojan-server/testdata/neo-term-repo.proce.top.key');
+        $server->setSni($config['sni']);
+        $server->setCert($config['cert']);
+        $server->setPk($config['pk']);
 
         run(function () use ($server) {
             $server->start();
