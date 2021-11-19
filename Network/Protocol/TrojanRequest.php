@@ -2,48 +2,41 @@
 
 namespace Trojan\Server\Network\Protocol;
 
-use Trojan\Server\Network\TLSConnection;
+use Trojan\Server\Network\BString;
 
 class TrojanRequest
 {
     const CONNECT = 1;
+    const UDP_ASSOCIATE = 3;
 
     public int $command;
 
     public Socks5Address $socks5Address;
 
-    public string $payload;
+    public BString $payload;
 
     public string $password;
 
 
-    function Parse($data): bool
+    function Parse(BString $data): bool
     {
-        $first = strpos($data, "\r\n");
+        $first = $data->find("\r\n");
         if ($first === false) {
             return false;
         }
-        $this->password = substr($data, 0, $first);
-        if (strlen($this->password) != 56) {
+        $this->password = $data->substr(0, $first);
+        $this->payload = $data->substr($first + 2);
+
+        if ($this->payload->length() == 0 || ($this->payload[0] !== self::CONNECT && $this->payload[0] != self::UDP_ASSOCIATE)) {
             return false;
         }
-        $this->payload = substr($data, $first + 2);
-
-        //暂时不打算支持udp
-        if (strlen($this->payload) == 0 || ord($this->payload[0]) != self::CONNECT) {
-            return false;
-        }
-
-        $this->command = ord($this->payload[0]);
+        $this->command = $this->payload[0];
         $this->socks5Address = new Socks5Address();
-        $addressLen = 0;
-        $isAddressValid = $this->socks5Address->Parse(substr($this->payload, 1), $addressLen);
-
-        if (!$isAddressValid || strlen($this->payload) < $addressLen + 3 || substr($this->payload, $addressLen + 1, 2) != "\r\n") {
+        list($is_address_valid, $address_len) = $this->socks5Address->Parse($this->payload->substr(1));
+        if (!$is_address_valid || $this->payload->length() < $address_len + 3 || $this->payload->substr($address_len + 1, 2) != "\r\n") {
             return false;
         }
-
-        $this->payload = substr($this->payload, $addressLen + 3);
+        $this->payload = $this->payload->substr($address_len + 3);
         return true;
     }
 }

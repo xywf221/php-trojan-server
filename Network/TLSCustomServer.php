@@ -155,9 +155,9 @@ class TLSCustomServer
     }
 
 
-    public function createContext()
+    private function getOptions(): array
     {
-        $options = [
+        return [
             'ssl' => [
                 'SNI_enabled' => true,
                 'peer_name' => $this->getSni(),
@@ -166,76 +166,63 @@ class TLSCustomServer
                 'passphrase' => $this->getPassphrase()
             ]
         ];
-        return stream_context_create($options);
-    }
-
-    public function start()
-    {
-        $errorCode = $errorMessage = null;
-        $socket = stream_socket_server(sprintf("tls://%s:%d", $this->getBindAddress(), $this->getBindPort()),
-            $errorCode, $errorMessage, STREAM_SERVER_BIND | STREAM_SERVER_LISTEN, $this->createContext());
-
-        if ($errorCode != 0) {
-            throw new RuntimeException($errorMessage, $errorCode);
-        }
-
-        while (true) {
-            $conn = stream_socket_accept($socket, -1);
-            if (is_resource($conn)) {
-                go(function () use ($conn) {
-                    try {
-                        $this->handleConn($conn);
-                    }catch (\Exception $exception){
-                        var_dump($exception->getMessage());
-                    }
-                });
-            }
-
-        }
-
     }
 
     /**
-     * @param resource $conn
+     * @desc 启动服务
      */
-    public function handleConn($conn)
+    public function start()
     {
-        $tlsConn = new TLSConnection($conn);
-
-        $data = $tlsConn->read(8192);
-        // MAX_LENGTH 8192
-        $req = new TrojanRequest();
-        $valid = $req->Parse($data);
-        if ($valid) {
-            // 验证密码
-            var_dump($req->password);
-            //密码不通过  $valid = false;
+        $server = new StreamServer();
+        $server->listen(sprintf("tls://%s:%d", $this->getBindAddress(), $this->getBindPort()), $this->getOptions());
+        while (true) {
+            $conn = $server->accept();
+            if (!$conn) {
+                continue;
+            }
+            go(function () use ($conn) {
+                $this->handleConn($conn);
+            });
         }
+    }
+
+    /**
+     * @desc 处理请求
+     * @param Connection $conn
+     */
+    public function handleConn(Connection $conn)
+    {
+        $buff = $conn->stream->read(8192);
+        $req = new TrojanRequest();
+        $valid = $req->Parse($buff);
 
         $queryAddress = $valid ? $req->socks5Address->address : $this->getRemoteAddress();
         $queryPort = $valid ? $req->socks5Address->port : $this->getRemotePort();
+        $conn->stream->write($req->payload);
 
-        $clientConn = stream_socket_client(sprintf('tcp://%s:%d', $queryAddress, $queryPort));
-        // 貌似是一个线程的问题 Co::join 会有一个协程卡死(不会主动退出) 解决方案是 增加超时时间 或者 手动取消协程
-        $direction_remote_cid = $direction_client_cid = 0;
-        stream_set_timeout($tlsConn->resource, 12);
-        stream_set_timeout($clientConn, 12);
-        //把已经读到的数据写入
-        fwrite($clientConn, $valid ? $req->payload : $data);
-        // client < == > remote
-        Co::join([
-            go(function () use ($clientConn, $tlsConn, &$direction_remote_cid, $direction_client_cid) {
-                $direction_remote_cid = co::getCid();
-                stream_copy_to_stream($clientConn, $tlsConn->resource);
-                co::cancel($direction_client_cid);
-            }),
-            go(function () use ($clientConn, $tlsConn, &$direction_client_cid, $direction_remote_cid) {
-                $direction_client_cid = co::getCid();
-                stream_copy_to_stream($tlsConn->resource, $clientConn);
-                co::cancel($direction_remote_cid);
-            })
-        ]);
-        var_dump(memory_get_usage());
+
+//
+//        $clientConn = stream_socket_client(sprintf('tcp://%s:%d', $queryAddress, $queryPort));
+//        // 貌似是一个线程的问题 Co::join 会有一个协程卡死(不会主动退出) 解决方案是 增加超时时间 或者 手动取消协程
+//        $direction_remote_cid = $direction_client_cid = 0;
+//        stream_set_timeout($tlsConn->resource, 12);
+//        stream_set_timeout($clientConn, 12);
+//        //把已经读到的数据写入
+//        fwrite($clientConn, $valid ? $req->payload : $data);
+//        // client < == > remote
+//        Co::join([
+//            go(function () use ($clientConn, $tlsConn, &$direction_remote_cid, $direction_client_cid) {
+//                $direction_remote_cid = co::getCid();
+//                stream_copy_to_stream($clientConn, $tlsConn->resource);
+//                co::cancel($direction_client_cid);
+//            }),
+//            go(function () use ($clientConn, $tlsConn, &$direction_client_cid, $direction_remote_cid) {
+//                $direction_client_cid = co::getCid();
+//                stream_copy_to_stream($tlsConn->resource, $clientConn);
+//                co::cancel($direction_remote_cid);
+//            })
+//        ]);
+//        var_dump(memory_get_usage());
     }
 
 
